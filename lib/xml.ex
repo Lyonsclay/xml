@@ -32,7 +32,7 @@ defmodule XML do
       elementdef=undeclared % atom(), one of [undeclared | prolog | external | element]
     }).
   """
-  defrecordp :xmlElement, extract(:xmlElement, from_lib: "xmerl/include/xmerl.hrl")
+  defrecord :xmlElement, extract(:xmlElement, from_lib: "xmerl/include/xmerl.hrl")
 
   @doc """
   Import the xmlText record from xmerl.
@@ -50,7 +50,7 @@ defmodule XML do
       type = text   % atom() one of (text|cdata)
     }).
   """
-  defrecordp :xmlText, extract(:xmlText, from_lib: "xmerl/include/xmerl.hrl")
+  defrecord :xmlText, extract(:xmlText, from_lib: "xmerl/include/xmerl.hrl")
 
   @typedoc """
   Erlang xmerl xmlElement.
@@ -62,7 +62,8 @@ defmodule XML do
   """
   @type xml_text :: :xmlText
 
- 
+  @type key :: String.t | list | atom
+
   @doc """
   Parses a list representation of an XML document.
 
@@ -81,21 +82,51 @@ defmodule XML do
     { parsed_xml, _ } = :xmerl_scan.string(xml)
     strip_path_data(parsed_xml)
   end
-  @spec parse(string) :: xml_element
+  @spec parse(String.t) :: xml_element
   def parse(xml) when is_bitstring(xml) do
     { parsed_xml, _ } = :xmerl_scan.string(:binary.bin_to_list(xml))
     strip_path_data(parsed_xml)
   end
 
-  @spec get(xml_element, string) :: String.t
-  def get(xml_element, key) do
+  @doc """
+  Returns value associated with `key` in `xml_element`.
 
+  It takes a char list, string or atom and outputs the respective type.
+  It will also take an xpath expression.
+  """
+  @spec get(xml_element, key) :: list | String.t
+  def get(xml_element, key) when is_list(key) do
+    _get(xml_element, key)
+  end
+  def get(xml_element, key) when is_bitstring(key) do
+    _get(xml_element, String.to_char_list(key))
+    |> Enum.map(&(List.to_string(&1)))
+  end
+  def get(xml_element, key) when is_atom(key) do
+    _get(xml_element, Atom.to_char_list(key))
+    |> Enum.map(&(List.to_atom(&1)))
   end
 
-  @spec content(xml_element) :: xml_text
-  def content(xml_element) do
-    [xml_text] = xmlElement(xml_element, :content)
-    xml_text
+  @spec _get(xml_element, key) :: list
+  def _get(xml_element, key) do
+    _xpath(xml_element, '//' ++ key )
+    |> content
+    |> text_value
+  end
+
+  @spec _xpath(xml_element, list) :: [xml_element]
+  defp _xpath(xml_element, xpath) do
+    :xmerl_xpath.string(xpath, xml_element)
+  end
+
+  @spec content([xml_element]) :: [xml_text]
+  defp content(xml_element) do
+    Enum.flat_map(xml_element, &(xmlElement(&1, :content)))
+  end
+
+  @spec text_value(xml_text) :: [String.t]
+  defp text_value(xml_text) do
+    Enum.map(xml_text, &(xmlText(&1, :value)))
   end
 
   # Remove path data from xml_element xml_base attribute

@@ -20,31 +20,16 @@ defmodule XMLTest do
 
   test "get a value from XML data" do
     element = parse('<bag>cat</bag>')
-  
+
+    assert(get(element, 'bag') == ['cat'])
+    assert(get(element, "bag") == ["cat"])
+    assert(get(element, :bag) == [:cat])
   end
 
-  @tag :skip
-  #test "receives an xml response body" do
-  #  { :ok, string } = File.read("test/webster_response.xml")
+  test "get multiple values from XML data" do
+    element = parse('<fun><bag>cat</bag><bag>brown</bag></fun>')
 
-  #  body = :binary.bin_to_list string
-
-  #  { xml, _ } = :xmerl_scan.string body
-
-  #  [ field | _ ] = :xmerl_xpath.string('//fl', xml)
-
-  #  assert is_record(field, :xmlElement) == true
-
-  #  IO.inspect field
-
-  #  [ text ] = xmlElement(field, :content) 
-
-  #  assert(is_record(text, :xmlText))
-
-  #  assert is_record(text, :xmlText) == true
-
-  #  part = xmlText(text, :value) 
-
-  #  assert(part == 'noun')
-  #end
+    assert(get(element, 'bag') == ['cat', 'brown'])
+    assert(get(element, './/fun/bag') == ['cat', 'brown'])
+  end
 end
