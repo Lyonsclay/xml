@@ -50,6 +50,20 @@ defmodule XMLTest do
     assert get(xml, 'bag') == ['cat']
   end
 
+  test "get/2 doesn't take an xpath value" do
+    xml = '<bag>cat</bag>'
+
+    catch_exit get(xml, '/bag') 
+  end
+
+  test "retrieve a map of values with list of `tag`s" do
+    element = parse('<fun><bag>cat</bag><house>dog</house></fun>')
+
+    assert to_map(element, ['bag', 'house']) == %{ 'bag' => 'cat', 'house' => 'dog' }
+    assert to_map(element, ["bag", "house"]) == %{ "bag" => "cat", "house" => "dog" }
+    assert to_map(element, [:bag, :house]) == %{ :bag => :cat, :house => :dog }
+  end
+
   test "retrieve value from XML data with xpath" do
     element = parse('<fun><bag>cat</bag><bag>brown</bag></fun>')
 

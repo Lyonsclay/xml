@@ -69,6 +69,13 @@ defmodule XML do
   @type tag :: String.t | list | atom
 
   @typedoc """
+  Represents an XML value.
+
+  It can be either a string, a char list or an atom.
+  """
+  @type value :: String.t | list | atom
+
+  @typedoc """
   Raw XML data in the form of a string or char list.
   """
   @type xml :: String.t | list
@@ -174,6 +181,22 @@ defmodule XML do
     |> Enum.map(&(List.to_atom(&1)))
   end
 
+  @doc """
+  Retrieves a map of `tag` values from list of `tag`s
+
+  """
+  @spec to_map(xml, [tag]) :: [value]
+  def to_map(xml, tags) when is_xml(xml) do
+    parse(xml)
+    |> to_map(tags)
+  end
+  @spec to_map(xml_element, [tag]) :: [value]
+  def to_map(xml_element, tags) do
+    for key <- tags, into: %{} do
+      [ head | tail ] = get(xml_element, key)
+      { key, head }
+    end
+  end
 
   @doc """
   Evaluate and `xml_element` with an XPath expression.
