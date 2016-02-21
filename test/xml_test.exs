@@ -50,7 +50,7 @@ defmodule XMLTest do
     assert get(xml, 'bag') == ['cat']
   end
 
-  test "get/2 doesn't take an xpath value" do
+  test "get doesn't take an xpath value" do
     xml = '<bag>cat</bag>'
 
     catch_exit get(xml, '/bag') 
@@ -64,7 +64,31 @@ defmodule XMLTest do
     assert to_map(element, [:bag, :house]) == %{ :bag => :cat, :house => :dog }
   end
 
-  test "retrieve value from XML data with xpath" do
+  test "to map with a single `tag`" do
+    element = parse('<fun><bag>cat</bag><house>dog</house></fun>')
+
+    assert to_map(element, ['house']) == %{ 'house' => 'dog' }
+  end
+
+  test "to map with a root `tag`" do
+    element = parse('<fun><bag>cat</bag><house>dog</house></fun>')
+
+    assert to_map(element, ['fun']) == %{ }
+  end
+
+  test "to map with non-existant `tag`" do
+    element = parse('<fun><bag>cat</bag><house>dog</house></fun>')
+
+    assert to_map(element, ['chance']) == %{ 'chance' => nil }
+  end
+
+  test "to map takes first value for `tag`" do
+    element = parse('<fun><bag>cat</bag><bag>brown</bag></fun>')
+
+    assert to_map(element, ['bag']) == %{ 'bag' => 'cat' }
+  end
+
+  test "xpath with existant `tag`" do
     element = parse('<fun><bag>cat</bag><bag>brown</bag></fun>')
 
     assert xpath(element, '/fun/bag') == ['cat', 'brown']
