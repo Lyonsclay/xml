@@ -1,16 +1,19 @@
 defmodule XMLTest do
   use ExUnit.Case
+  import ExUnit.CaptureLog
   import XML
   import Record
   doctest XML
 
   test "parse a well-formed XML list" do
     xml = parse('<xml>this</xml>')
+
     assert is_record(xml, :xmlElement)
   end
 
   test "parse a well-formed XML string" do
     xml = parse("<xml>this</xml>")
+
     assert is_record(xml, :xmlElement)
   end
 
@@ -23,7 +26,12 @@ defmodule XMLTest do
 
     assert get(element, 'bag') == ['cat']
     assert get(element, "bag") == ["cat"]
-    assert get(element, :bag) == [:cat]
+  end
+
+  test "get with a root tag" do
+    element = parse('<fun><bag>cat</bag><house>dog</house></fun>')
+
+    assert get(element, 'fun') == []
   end
 
   test "get a non-existant value from XML data" do
@@ -38,13 +46,13 @@ defmodule XMLTest do
     catch_exit get(element, '1bag')
   end
 
-  test "get multiple values from an XML element" do
+  test "get multiple values from an `xml_element`" do
     element = parse('<fun><bag>cat</bag><bag>brown</bag></fun>')
 
     assert get(element, 'bag') == ['cat', 'brown']
   end
 
-  test "get a value from un-parsed XML" do
+  test "get with un-parsed XML" do
     xml = '<bag>cat</bag>'
 
     assert get(xml, 'bag') == ['cat']
@@ -56,12 +64,11 @@ defmodule XMLTest do
     catch_exit get(xml, '/bag') 
   end
 
-  test "retrieve a map of values with list of `tag`s" do
+  test "to map with list of `tag`s" do
     element = parse('<fun><bag>cat</bag><house>dog</house></fun>')
 
     assert to_map(element, ['bag', 'house']) == %{ 'bag' => 'cat', 'house' => 'dog' }
     assert to_map(element, ["bag", "house"]) == %{ "bag" => "cat", "house" => "dog" }
-    assert to_map(element, [:bag, :house]) == %{ :bag => :cat, :house => :dog }
   end
 
   test "to map with a single `tag`" do
@@ -73,7 +80,8 @@ defmodule XMLTest do
   test "to map with a root `tag`" do
     element = parse('<fun><bag>cat</bag><house>dog</house></fun>')
 
-    assert to_map(element, ['fun']) == %{ }
+    assert to_map(element, ['fun']) == %{'fun' => %{'bag' => 'cat', 'house' => 'dog'}}
+    assert to_map(element, ["fun"]) == %{"fun" => %{"bag" => "cat", "house" => "dog"}}
   end
 
   test "to map with non-existant `tag`" do
@@ -95,15 +103,34 @@ defmodule XMLTest do
     assert xpath(element, "/fun/bag") == ["cat", "brown"]
   end
 
-  test "retrieve value with non-existant `tag` from xpath" do
-    element = parse('<bag>cat</bag>')
+  test "xpath with root `tag`" do
+    element = parse('<fun><bag>cat</bag><house>brown</house></fun>')
 
-    assert xpath(element, '/funny') == []
+    assert xpath(element, '/fun')  ==  []
   end
 
-  test "retrieve value with invalid XPath expression from xpath" do
+  test "xpath with non-existant `tag`" do
+    element = parse('<bag>cat</bag>')
+
+    assert xpath(element, '/funny') == nil
+  end
+
+  test "xpath with invalid XPath expression" do
     element = parse('<bag>cat</bag>')
 
     catch_exit xpath(element, "/%") == []
+  end
+
+  test "xpath to get children" do
+    element = parse('<fun><bag>cat</bag><house>dog</house></fun>')
+
+    assert xpath(element, '/fun/text()') ==  nil
+    assert xpath(element, '/fun/node()') == ['cat', 'dog']
+  end
+
+  test "xpath with multiple values" do
+    element = parse('<fun><bag>cat</bag><bag>dog</bag></fun>')
+
+    assert xpath(element, '/fun/bag/node()') == ['cat', 'dog'] 
   end
 end

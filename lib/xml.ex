@@ -34,18 +34,30 @@ defmodule XML do
   defrecord :xmlElement, extract(:xmlElement, from_lib: "xmerl/include/xmerl.hrl")
 
   @doc """
+  Import the xmlNamespace record from xmerl.
+
+  This type will be returned when a XML Namespace element is selected with xpath/2 or get/2.
+  An error message will be thrown in either case, because there is no value associated with a Namespace element. It has the following spec from the Erlang documentation.
+
+  %% namespace record
+  -record(xmlNamespace,{
+	default = [],
+	nodes = []
+	}).
+  """
+  defrecord :xmlNamespace, extract(:xmlNamespace, from_lib: "xmerl/include/xmerl.hrl")
+
+  @doc """
   Import the xmlText record from xmerl.
 
   It is the type that is returned when accessing the content attribute of
   an :xmlElement. It has the following spec from the Erlang documentation.
 
   %% plain text
-  %% IOlist = [char() | binary () | IOlist]
   -record(xmlText,{
       parents = [],  % [{atom(),integer()}]
       pos,    % integer()
       language = [],% inherits the element's language
-      value,  % IOlist()
       type = text   % atom() one of (text|cdata)
     }).
   """
@@ -55,25 +67,39 @@ defmodule XML do
   Erlang xmerl xmlElement.
   """
   @type xml_element :: :xmlElement
+  defmacro is_xml_element(element) do
+    quote do: is_record(unquote(element), :xmlElement)
+  end
+
+  @typedoc """
+  Erlang xmerl xmlNamespace.
+  """
+  @type xml_namespace :: :xmlNamespace
+  defmacro is_xml_namespace(element) do
+    quote do: is_record(unquote(element), :xmlNamespace) 
+  end
 
   @typedoc """
   Erlang xmerl xmlText.
   """
   @type xml_text :: :xmlText
+  defmacro is_xml_text(element) do
+    quote do: is_record(unquote(element), :xmlText)
+  end
 
   @typedoc """
   Represents an XML tag name.
 
-  It can be either a string, a char list or an atom.
+  It can be either a string, a character list.
   """
-  @type tag :: String.t | list | atom
+  @type tag :: String.t | list
 
   @typedoc """
   Represents an XML value.
 
-  It can be either a string, a char list or an atom.
+  It can be either a string, a character list.
   """
-  @type value :: String.t | list | atom
+  @type value :: String.t | list
 
   @typedoc """
   Raw XML data in the form of a string or char list.
@@ -82,6 +108,8 @@ defmodule XML do
   defmacro is_xml(xml) do
     quote do: is_bitstring(unquote(xml)) or is_list(unquote(xml))
   end
+
+  
 
   @doc """
   Parses an XML document.
@@ -150,10 +178,6 @@ defmodule XML do
       ["cat"]
 
       iex>element = XML.parse('<bag>cat</bag>')
-      ...>XML.get(element, :bag)
-      [:cat]
-
-      iex>element = XML.parse('<bag>cat</bag>')
       ...>try do
       ...>  XML.get(element, '/bag')
       ...>catch
@@ -176,13 +200,85 @@ defmodule XML do
     _get(xml_element, String.to_char_list(tag))
     |> Enum.map(&(List.to_string(&1)))
   end
-  def get(xml_element, tag) when is_atom(tag) do
-    _get(xml_element, Atom.to_char_list(tag))
-    |> Enum.map(&(List.to_atom(&1)))
+
+  @spec _get(xml_element, tag) :: list
+  defp _get(xml_element, tag) do
+    validate_tag(tag)
+    case _xpath(xml_element, '//' ++ tag )
+      |> value_from_element do
+      [ head | _ ] when is_xml_namespace(head) ->
+        []
+      values ->
+        values
+    end
+    #|> content
+    #|> text_value
+    #|> value_from_element
   end
 
   @doc """
-  Retrieves a map of `tag` values from list of `tag`s
+  Evaluate an `xml_element` with an XPath expression.
+
+  It takes an XPath expression in the form of char list or string, and returns a
+  list of any matching values in the respective type. If the expression uses
+  characters that are not permitted by Xpath it will exit with :invalid_name
+  error.
+
+  ## Examples
+
+      iex>element = XML.parse('<fun><bag>cat</bag><bag>brown</bag></fun>')
+      iex>XML.xpath(element, '/bag') 
+      nil
+      iex>XML.xpath(element, '/fun/bag')
+      ['cat', 'brown']
+  """
+  @spec xpath(xml_element, list) :: list
+  def xpath(xml_element, path) when is_list(path) do
+    case _xpath(xml_element, path)
+    |> value_from_element do
+      [] ->
+        nil
+      [ head | _ ] when is_xml_namespace(head) ->
+        []
+      values ->
+        values
+    end
+  end
+  def xpath(xml_element, path) when is_bitstring(path) do
+    xpath(xml_element, String.to_char_list(path))
+    |> Enum.map(fn value -> to_string(value) end)
+  end
+
+  @spec _xpath(xml_element, list) :: [xml_element]
+  defp _xpath(xml_element, xpath) do
+    :xmerl_xpath.string(xpath, xml_element)
+  end
+
+  @spec value_from_element([]) :: []
+  defp value_from_element([]), do: []
+  @spec value_from_element([ xml_element | xml_text | xml_namespace ]) :: [value]
+  defp value_from_element(elements) do
+    
+    [ element | _ ] = elements
+    cond do
+      is_xml_namespace(element) ->
+        raise "unhandled namespace **********"
+      is_xml_text(element) ->
+        text_value(elements)
+      is_xml_element(element) ->
+        content(elements)
+        |> text_value
+    end
+  end
+
+
+  @doc """
+  Creates a map of `tag`/`value`s from a list of `tag`s
+
+  If a `tag` doesn't exist it's corresponding value will be nil.
+  If a `tag` has multiple values only the first will be paired with the `tag`.
+
+  ## Examples
 
   """
   @spec to_map(xml, [tag]) :: [value]
@@ -191,66 +287,70 @@ defmodule XML do
     |> to_map(tags)
   end
   @spec to_map(xml_element, [tag]) :: [value]
-  def to_map(xml_element, tags) do
-    for key <- tags, into: %{} do
-      [ head | tail ] = get(xml_element, key)
-      { key, head }
+  def to_map(xml_element, [ head | tail ]) when is_bitstring(head) do
+    tags = Enum.map([head | tail], &(String.to_char_list(&1)))
+    to_map(xml_element, tags)
+    |> map_to_bitstring
+  end
+  @spec to_map(xml_element, [tag]) :: [value]
+  def to_map(xml_element, tags) when is_list(tags) do
+    for key <- tags, into: %{ } do
+      case xpath(xml_element, '//' ++ key) do
+        nil ->
+          { key, nil }
+        [ ] ->
+          { key, to_map(xml_element, get_children(xml_element, key)) }
+        [ head | _ ] ->
+          { key, head }
+      end
     end
   end
 
-  @doc """
-  Evaluate and `xml_element` with an XPath expression.
+  @spec map_to_bitstring(%{list => list}) :: %{String.t => String.t}
+  def map_to_bitstring(tag_map) do
+    for {k, v} <- tag_map, into: %{} do
+      if is_list(v) do
+        {to_string(k), to_string(v)}
+      else
+        {to_string(k), map_to_bitstring(v)}
+      end
+    end
+  end
 
-  It takes an XPath expression in the form of char list or string, and returns a
-  list of any matching values in the respective type. If the expression uses
-  characters that are not permitted by Xpath it will exit with :invalid_name
-  error.
-
-  ## Examples
-      iex>element = XML.parse('<fun><bag>cat</bag><bag>brown</bag></fun>')
-      iex>XML.xpath(element, '/bag') 
-      [] 
-      iex>XML.xpath(element, '/fun/bag')
-      ['cat', 'brown']
-  """
-  @spec xpath(xml_element, list) :: list
-  def xpath(xml_element, path) when is_list(path) do
+  @spec get_children(xml_element, tag) :: [tag]
+  def get_children(xml_element, tag) when is_list(tag) do
+    path = '/' ++ tag ++ '/child::node()'
     _xpath(xml_element, path)
-    |> content
-    |> text_value
+    |> Enum.map(&(xmlElement(&1, :name))) 
+    |> Enum.map(&(Atom.to_char_list(&1)))
   end
-  def xpath(xml_element, path) when is_bitstring(path) do
-    _xpath(xml_element, String.to_char_list(path))
-    |> content
-    |> text_value
-    |> Enum.map(&(List.to_string(&1)))
-  end
-
-  @spec _get(xml_element, tag) :: list
-  defp _get(xml_element, tag) do
-    check_tag(tag)
-    _xpath(xml_element, '//' ++ tag )
-    |> content
-    |> text_value
-  end
-
-  @spec _xpath(xml_element, list) :: [xml_element]
-  defp _xpath(xml_element, xpath) do
-    :xmerl_xpath.string(xpath, xml_element)
+  def get_children(xml_element, tag) when is_bitstring(tag) do
+    path = '/' ++ String.to_char_list(tag) ++ '/child::node()'
+    _xpath(xml_element, path)
+    |> Enum.map(&(xmlElement(&1, :name))) 
+    |> Enum.map(&(Atom.to_string(&1)))
   end
 
   @spec content([xml_element]) :: [xml_text]
   defp content(xml_element) do
+    check_for_namespace(xml_element)
     Enum.flat_map(xml_element, &(xmlElement(&1, :content)))
   end
 
-  @spec text_value(xml_text) :: [String.t]
-  defp text_value(xml_text) do
-    Enum.map(xml_text, &(xmlText(&1, :value)))
+  @spec get_keys([ xml_text ]) :: [String.t]
+  defp get_keys(elements) do
+    Enum.map(elements, &(xmlText(&1, :value)))
   end
 
-  # Remove path data from xml_element xml_base attribute for easy testing and
-  # interpretation.
+  @spec text_value([ xml_text ]) :: [String.t]
+  defp text_value(elements) do
+    [ head | _ ] = elements
+    tony = Enum.map(elements, &(xmlText(&1, :value)))
+    Enum.map(elements, &(xmlText(&1, :value)))
+  end
+
+  # Remove verbose path data from xml_element xml_base attribute for easy testing
+  # and readability.
   @spec strip_path_data(xml_element) :: xml_element
   defp strip_path_data(xml_element) do
     if elem(xml_element, 10) == cwd do
@@ -261,9 +361,18 @@ defmodule XML do
   end
 
   # Use :xmerl_scan to check if tag name is valid.
-  @spec check_tag(tag) :: xml_element | :exit
-  defp check_tag(tag) do
+  @spec validate_tag(tag) :: xml_element | :exit
+  defp validate_tag(tag) do
     :xmerl_scan.string('<#{tag}></#{tag}>')
+  end
+
+  @spec check_for_namespace([xml_element] | [xml_namespace] | [xml_text] | [list]) :: [] | [list]
+  defp check_for_namespace([ head | _ ]) do
+    if is_xml_namespace(head) do
+      #raise "#{tag} is an XML Namespace element, which doesn't have a value."
+      raise "xml Namespace element boooh!"
+    end
+    head 
   end
 
   @spec cwd :: list
