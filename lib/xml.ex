@@ -11,7 +11,7 @@ defmodule XML do
   @doc """
   Import the xmlElement record from xmerl.
 
-  It is the type that is returned when xmerl parses an XML document. It can be
+  An xmlElement is returned when xmerl parses an XML document. It can be
   navigated with the xmerl xpath function. It has the following spec from the
   Erlang documentation.
 
@@ -50,7 +50,7 @@ defmodule XML do
   @doc """
   Import the xmlText record from xmerl.
 
-  It is the type that is returned when accessing the content attribute of
+  It is the type that is returned when accessing the `content` attribute of
   an :xmlElement. It has the following spec from the Erlang documentation.
 
   %% plain text
